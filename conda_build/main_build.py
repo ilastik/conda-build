@@ -159,6 +159,12 @@ different sets of packages."""
         choices=PythonVersionCompleter(),
     )
     p.add_argument(
+        '--force32',
+        action="store_true",
+        help="""When passed on a 64-bit platform, will build 32-bit packages""",
+        metavar="CONDA_FORCE_32BIT",
+    )
+    p.add_argument(
         '--perl',
         action="append",
         help="""Set the Perl version used by conda build. Can be passed
