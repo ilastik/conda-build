@@ -235,7 +235,12 @@ Error:
     You can install 'patch' using apt-get, yum (Linux), Xcode (MacOSX),
     or conda, cygwin (Windows),
 """ % (os.pathsep.join(external.dir_paths)))
-    check_call([patch, '-p0', '-i', path], cwd=src_dir)
+    patch_args = ['-p0', '-i', path]
+    # Necessary because Gnuwin patch program expects windows style line endings
+    #   --binary disables automatic line ending transformation.
+    if sys.platform == 'win32':
+        patch_args = ["--binary", ] + patch_args
+    check_call([patch, ] + patch_args, cwd=src_dir)
 
 
 def provide(recipe_dir, meta, patch=True):
