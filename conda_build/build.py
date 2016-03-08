@@ -349,6 +349,26 @@ def bldpkg_path(m):
     '''
     return join(config.bldpkgs_dir, '%s.tar.bz2' % m.dist())
 
+def guess_binary_compatibility(path):
+    '''Create a dictionary from all files in 'glob(path)' that maps
+       package names to binary compatibility specs, like
+       compat['zlib'] => '1.2*,>=1.2.8'
+
+       For now, this information is just guessed from the version
+       string, but conda might later add an optional field to the
+       package's index.json file and/or maintain a public database
+       with regularly updated compatibility information.
+    '''
+    import glob, json, os
+    bin_compatibility = dict()
+    for filename in glob.glob(path):
+        with open(filename) as file:
+            data = json.load(file)
+        v = data['version'].split('.')
+        compat = v[0]+'.'+v[1]+'*,>='+data['version']
+        bin_compatibility[data['name']] = compat
+    return bin_compatibility
+
 def build(m, get_src=True, post=None, include_recipe=True):
     '''
     Build the package with the specified metadata.
@@ -410,10 +430,11 @@ def build(m, get_src=True, post=None, include_recipe=True):
         if get_src:
             source.provide(m.path, m.get_section('source'))
 
+        bin_compatibility = guess_binary_compatibility(config.build_prefix+'/conda-meta/*.json')
         # Parse our metadata again because we did not initialize the source
         # information before.
         # By now, all jinja variables should be defined, so don't permit undefined vars.
-        m.parse_again(permit_undefined_jinja=False)
+        m.parse_again(permit_undefined_jinja=False, binary_compatibility=bin_compatibility)
 
         print("Package:", m.dist())
 
