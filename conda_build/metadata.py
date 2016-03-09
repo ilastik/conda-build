@@ -339,24 +339,19 @@ class MetaData(object):
         # In the second pass, we'll be more strict. See build.build()
         self.parse_again(permit_undefined_jinja=True)
 
-    def parse_again(self, permit_undefined_jinja=False, binary_compatibility=None):
+    def parse_again(self, permit_undefined_jinja=False, extra_vars={}):
         """Redo parsing for key-value pairs that are not initialized in the
         first pass.
 
         permit_undefined_jinja: If True, *any* use of undefined jinja variables will
                                 evaluate to an emtpy string, without emitting an error.
 
-        binary_compatibility: A dictionary whose keys are the names of the packages present
-                              in the _build environment and whose keys are a specification
-                              of binary compatiblity such as '1.2*,>=1.2.8'.
-                              The dictionary will be available as jinja2 variable 'compatible'
-                              which can be used to specialize run requirements according to
-                              what was actually present during the build, for example
-                              "requirements: run: - zlib {{ compatible['zlib'] }}".
+        extra_vars: A dictionary of variables that jinja2 shall add to its global
+                    namespace. Keys must be strings.
         """
         if not self.meta_path:
             return
-        self.meta = parse(self._get_contents(permit_undefined_jinja, binary_compatibility))
+        self.meta = parse(self._get_contents(permit_undefined_jinja, extra_vars))
 
         if (isfile(self.requirements_path) and
                    not self.meta['requirements']['run']):
@@ -563,7 +558,7 @@ class MetaData(object):
     def skip(self):
         return self.get_value('build/skip', False)
 
-    def _get_contents(self, permit_undefined_jinja, binary_compatibility=None):
+    def _get_contents(self, permit_undefined_jinja, extra_vars={}):
         '''
         Get the contents of our [meta.yaml|conda.yaml] file.
         If jinja is installed, then the template.render function is called
@@ -572,13 +567,8 @@ class MetaData(object):
         permit_undefined_jinja: If True, *any* use of undefined jinja variables will
                                 evaluate to an emtpy string, without emitting an error.
 
-        binary_compatibility: A dictionary whose keys are the names of the packages present
-                              in the _build environment and whose keys are a specification
-                              of binary compatiblity such as '1.2*,>=1.2.8'.
-                              The dictionary will be available as jinja2 variable 'compatible'
-                              which can be used to specialize run requirements according to
-                              what was actually present during the build, for example
-                              "requirements: run: - zlib {{ compatible['zlib'] }}".
+        extra_vars: A dictionary of variables that jinja2 shall add to its global
+                    namespace. Keys must be strings.
         '''
         try:
             import jinja2
@@ -642,8 +632,31 @@ class MetaData(object):
         env = jinja2.Environment(loader=jinja2.ChoiceLoader(loaders), undefined=undefined_type)
         env.globals.update(ns_cfg())
         env.globals.update(context_processor(self, path))
-        if binary_compatibility is not None:
-            env.globals['compatible'] = binary_compatibility
+        env.globals.update(extra_vars)
+
+        def do_compatible(version):
+            '''
+            Filter to create the default compatibility spec for a version number, e.g.::
+
+              1.2.8  =>   1.2*,>=1.2.8
+
+            This function may eventually be extended to replace the guess with information
+            extracted from index.json and/or from a public compatibility database.
+            Typically used in the run requirements section of a recipe to determine
+            compatibility of the actual version of a dependency used in the build::
+
+              requirements:
+                build:
+                  - zlib       # allow any version
+                run:
+                  - zlib {{ version['zlib']|compatible }} # restrict to guessed binary compatibility
+            '''
+            v = version.split('.')
+            if len(v) > 1:
+                return v[0]+'.'+v[1]+'*,>='+version
+            else:
+                return version
+        env.filters['compatible'] = do_compatible
 
         try:
             template = env.get_or_select_template(filename)
